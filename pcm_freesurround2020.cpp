@@ -281,28 +281,42 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
  *
  * Allocate internal buffers
  */
-static int fs_prepare(snd_pcm_extplug_t *ext)
-{
-	fs_data *data = (fs_data *)ext;
-
-	//This is here if I need it
-
-	return 0;
-}
-
-
+static int fs_prepare(snd_pcm_extplug_t *ext) { return 0; }
 
 /*
  * close callback
  */
-static int fs_close(snd_pcm_extplug_t *ext)
-{
-	fs_data *data = (fs_data *)ext;
+static int fs_close(snd_pcm_extplug_t *ext) { return 0; }
 
-	//This is here if I need it
+/*
+ * close callback
+ */
+static int fs_hw_params(snd_pcm_extplug_t *ext,snd_pcm_hw_params_t *params) { return 0; }
 
-	return 0;
-}
+/*
+ * close callback
+ */
+static int fs_hw_free(snd_pcm_extplug_t *ext) { return 0; }
+
+/*
+ * close callback
+ */
+static void fs_dump(snd_pcm_extplug_t *ext,snd_output_t *out) { return; }
+
+/*
+ * close callback
+ */
+static int fs_set_chmap(snd_pcm_extplug_t *ext,const snd_pcm_chmap_t *map) { return 0; }
+
+/*
+ * close callback
+ */
+static snd_pcm_chmap_query_t ** fs_query_chmaps(snd_pcm_extplug_t *ext) { return NULL; }
+
+/*
+ * close callback
+ */
+static snd_pcm_chmap_t * fs_get_chmap(snd_pcm_extplug_t *ext,const snd_pcm_chmap_t *map) { return NULL; }
 
 /*
  * callback table
@@ -310,13 +324,13 @@ static int fs_close(snd_pcm_extplug_t *ext)
 snd_pcm_extplug_callback_t fs_callback = {
 	.transfer = fs_transfer,
 	.close = fs_close,
-	.hw_params = NULL,
-	.hw_free = NULL,
-	.dump = NULL,
+	.hw_params = fs_hw_params,
+	.hw_free = fs_hw_free,
+	.dump = fs_dump,
 	.init = fs_prepare,
-	.query_chmaps = NULL,
-	.get_chmap = NULL,
-	.set_chmap = NULL
+	.query_chmaps = fs_query_chmaps,
+	.get_chmap = fs_get_chmap,
+	.set_chmap = fs_set_chmap
 };
 
 /*
