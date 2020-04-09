@@ -1,0 +1,23 @@
+how to compile:
+
+libtool --tag=CXX --mode=compile g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT channelmaps.lo -MD -MP -MF ".deps/channelmaps.Tpo" -c -o channelmaps.lo channelmaps.cpp
+libtool --tag=CXX --mode=compile g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT freesurround_decoder.lo -MD -MP -MF ".deps/freesurround_decoder.Tpo" -c -o freesurround_decoder.lo freesurround_decoder.cpp
+libtool --tag=CXX --mode=compile g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT kiss_fft.lo -MD -MP -MF ".deps/kiss_fft.Tpo" -c -o kiss_fft.lo kiss_fft.cpp
+libtool --tag=CXX --mode=compile g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT kiss_fftr.lo -MD -MP -MF ".deps/kiss_fftr.Tpo" -c -o kiss_fftr.lo kiss_fftr.cpp
+libtool --tag=CXX --mode=compile g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT pcm_freesurround2020.lo -MD -MP -MF ".deps/pcm_freesurround2020.Tpo" -c -o pcm_freesurround2020.lo pcm_freesurround2020.cpp
+
+mv .deps/channelmaps.Tpo .deps/channelmaps.Plo
+mv .deps/freesurround_decoder.Tpo .deps/freesurround_decoder.Plo
+mv .deps/kiss_fft.Tpo .deps/kiss_fft.Plo
+mv .deps/kiss_fftr.Tpo .deps/kiss_fftr.Plo
+mv .deps/pcm_freesurround2020.Tpo .deps/pcm_freesurround2020.Plo
+
+g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT channelmaps.lo -MD -MP -MF .deps/channelmaps.Tpo -c channelmaps.cpp  -fPIC -DPIC -o .libs/channelmaps.o
+g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT freesurround_decoder.lo -MD -MP -MF .deps/freesurround_decoder.Tpo -c freesurround_decoder.cpp  -fPIC -DPIC -o .libs/freesurround_decoder.o
+g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT kiss_fft.lo -MD -MP -MF .deps/kiss_fft.Tpo -c kiss_fft.cpp  -fPIC -DPIC -o .libs/kiss_fft.o
+g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT kiss_fftr.lo -MD -MP -MF .deps/kiss_fftr.Tpo -c kiss_fftr.cpp  -fPIC -DPIC -o .libs/kiss_fftr.o
+g++ -std=c++1z -I. -Wall -I/usr/include/alsa -O3 -MT pcm_freesurround2020.lo -MD -MP -MF .deps/pcm_freesurround2020.Tpo -c pcm_freesurround2020.cpp  -fPIC -DPIC -o .libs/pcm_freesurround2020.o
+
+libtool --tag=CXX --mode=link g++ -Wall -I/usr/include/alsa -O3 -module -avoid-version -export-dynamic -o libasound_module_pcm_freesurround2020.la -rpath /usr/lib/alsa-lib  pcm_freesurround2020.lo kiss_fft.lo kiss_fftr.lo channelmaps.lo freesurround_decoder.lo -lasound
+
+gcc -shared .libs/pcm_freesurround2020.o .libs/kiss_fft.o .libs/kiss_fftr.o .libs/channelmaps.o .libs/freesurround_decoder.o /usr/lib/libasound.so  -Wl,-soname -Wl,libasound_module_pcm_freesurround2020.so -o .libs/libasound_module_pcm_freesurround2020.so
