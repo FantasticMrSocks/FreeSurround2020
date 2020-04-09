@@ -316,7 +316,7 @@ static snd_pcm_chmap_query_t ** fs_query_chmaps(snd_pcm_extplug_t *ext) { return
 /*
  * close callback
  */
-static snd_pcm_chmap_t * fs_get_chmap(snd_pcm_extplug_t *ext,const snd_pcm_chmap_t *map) { return NULL; }
+static snd_pcm_chmap_t * fs_get_chmap(snd_pcm_extplug_t *ext) { return NULL; }
 
 /*
  * callback table
