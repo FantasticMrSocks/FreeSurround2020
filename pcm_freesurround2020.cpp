@@ -62,9 +62,18 @@ extern "C" {
 #endif
 
 const unsigned int INPUT_CHANNELS = 2;
-const int fs_to_alsa[8] = {0, 4, 1, 6, 7, 2, 3, 5};
-const int alsa_to_fs[8] = {0, 2, 5, 6, 1, 7, 3, 4};
-static std::queue<float> out_buf;
+const int fs_to_alsa_table[8] = {0, 4, 1, 6, 7, 2, 3, 5};
+const int alsa_to_fs_table[8] = {0, 2, 5, 6, 1, 7, 3, 4};
+std::vector<int> alsa_to_fs(int num_channels) {
+	std::vector<int> mapping;
+	for (int i = 0; i < 8; i++) {
+		int fs_channel = std::distance(alsa_to_fs_table, std::find(alsa_to_fs_table, alsa_to_fs_table+num_channels, i));
+		if (fs_channel < num_channels) {
+			mapping.push_back(fs_channel);
+		}
+	}
+	return mapping;
+}
 
 // holds the user-configurable parameters of the FreeSurround plugin
 struct freesurround_params
@@ -122,7 +131,7 @@ public:
 	freesurround_pcm(freesurround_params fs_params = freesurround_params()):
 		params(fs_params),
 		rechunker(boost::bind(&freesurround_pcm::process_chunk,this,_1),chunk_size*2),
-		decoder(params.channels_fs), srate(44100)
+		decoder(params.channels_fs,4096), srate(44100)
 	{
 		// set up decoder parameters according to preset params
 		decoder.circular_wrap(params.circular_wrap);
@@ -135,6 +144,8 @@ public:
 		decoder.bass_redirection(params.use_lfe);
 		decoder.low_cutoff(params.bass_lo/(srate/2.0));
 		decoder.high_cutoff(params.bass_hi/(srate/2.0));
+		rechunker.flush();
+		channel_map = alsa_to_fs(num_channels());
 	}
 
 	// receive a chunk from ALSA and buffer it
@@ -160,9 +171,18 @@ public:
 		unsigned channels = num_channels();
 		for (unsigned s=0; s<chunk_size; s++){
 			for (unsigned c=0; c<channels; c++) {
-				out_buf.push(src[alsa_to_fs[c]+(s*channels)]);
+				out_buf.push(src[channel_map[c]+(s*channels)]);
 			}
 		}
+	}
+
+	float pop_out_buf() {
+		float sample = 0.0;
+		if (!out_buf.empty()) {
+			sample = out_buf.front();
+			out_buf.pop();
+		}
+		return sample;
 	}
 
 private:
@@ -170,9 +190,9 @@ private:
 	stream_chunker<float> rechunker;	// gathers/splits the inbound data stream into equally-sized chunks
 	freesurround_decoder decoder;		// the surround decoder
 	unsigned srate;	             		// last known sampling rate
+	std::queue<float> out_buf;			// the buffer where we store outgoing samples
+	std::vector<int> channel_map;
 };
-
-freesurround_pcm fs_plugin;
 
 static std::unordered_map<std::string, channel_setup> const table = {
 	{"cs_stereo",channel_setup::cs_stereo},
@@ -202,22 +222,21 @@ channel_setup find_cs(std::string str) {
 
 struct fs_data {
 	fs_data(snd_pcm_extplug_t *ext) : ext(*ext) {}
-	freesurround_pcm plugin;
+	freesurround_pcm* plugin;
 	snd_pcm_extplug_t ext;
 	snd_pcm_hw_params_t *hw_params;
 };
-
 
 /*
  * Helper functions
  */
 static inline void *area_addr(const snd_pcm_channel_area_t *area, snd_pcm_uframes_t offset) {
 	unsigned int bitofs = area->first + area->step * offset;
-	return area->addr + bitofs;
+	return area->addr + bitofs / 8;
 }
 
 static inline unsigned int area_step(const snd_pcm_channel_area_t *area) {
-	return area->step;
+	return area->step / 32;
 }
 
 #ifdef __cplusplus
@@ -233,47 +252,42 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	       snd_pcm_uframes_t src_offset,
 	       snd_pcm_uframes_t size)
 {
-	unsigned OUTPUT_CHANNELS = fs_plugin.num_channels();
+	fs_data *data = (fs_data *)ext->private_data;
+
+	unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
 	float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
 	unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
 	float in_buf[INPUT_CHANNELS * size];
 
     for (c = 0; c < INPUT_CHANNELS; c++) {
 		src[c] = (float *)area_addr(src_areas + c, src_offset);
-		src_step[c] = area_step(src_areas + c) / INPUT_CHANNELS;
+		src_step[c] = area_step(src_areas + c);
 	}
     for (c = 0; c < OUTPUT_CHANNELS; c++) {
 		dst[c] = (float *)area_addr(dst_areas + c, dst_offset);
-		dst_step[c] = area_step(dst_areas + c) / INPUT_CHANNELS;
+		dst_step[c] = area_step(dst_areas + c);
 	}
 
 	for (s=0; s<size; s++) {
 		for (c=0; c<INPUT_CHANNELS; c++){
-			in_buf[(s*INPUT_CHANNELS)+alsa_to_fs[c]] = *src[c];
+			in_buf[(s*INPUT_CHANNELS)+c] = *src[c];
 			src[c] += src_step[c];
 		}
 	}
 
 	// Send n=size*INPUT_CHANNELS samples off to chunker to buffer for decoding
-    fs_plugin.get_chunk(in_buf, size);
+    data->plugin->get_chunk(in_buf, size);
 
 	// Copy from output buffer into dst
 	for (s=0; s<size; s++) {
 		for (c=0; c<OUTPUT_CHANNELS; c++) {
-			if (!out_buf.empty()) {
-				*dst[c] = out_buf.front();
-				out_buf.pop();
-			} else {
-				*dst[c] = 0.0;
-			}
+			*dst[c] = data->plugin->pop_out_buf();
 			dst[c] += dst_step[c];
 		}
 	}
 
 	return size;
 }
-
-
 
 
 /*
@@ -286,35 +300,39 @@ static int fs_prepare(snd_pcm_extplug_t *ext) { return 0; }
 /*
  * close callback
  */
-static int fs_close(snd_pcm_extplug_t *ext) { return 0; }
+static int fs_close(snd_pcm_extplug_t *ext) {
+	fs_data *data = (fs_data *)ext->private_data;
+	delete data->plugin;
+	return 0;
+}
 
 /*
- * close callback
+ * hw_params callback
  */
 static int fs_hw_params(snd_pcm_extplug_t *ext,snd_pcm_hw_params_t *params) { return 0; }
 
 /*
- * close callback
+ * free callback
  */
 static int fs_hw_free(snd_pcm_extplug_t *ext) { return 0; }
 
 /*
- * close callback
+ * dump callback
  */
 static void fs_dump(snd_pcm_extplug_t *ext,snd_output_t *out) { return; }
 
 /*
- * close callback
+ * set_chmap callback
  */
 static int fs_set_chmap(snd_pcm_extplug_t *ext,const snd_pcm_chmap_t *map) { return 0; }
 
 /*
- * close callback
+ * query_chmaps callback
  */
 static snd_pcm_chmap_query_t ** fs_query_chmaps(snd_pcm_extplug_t *ext) { return NULL; }
 
 /*
- * close callback
+ * get_chmap callback
  */
 static snd_pcm_chmap_t * fs_get_chmap(snd_pcm_extplug_t *ext) { return NULL; }
 
@@ -344,7 +362,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(freesurround2020)
     static const unsigned int chlist[2] = {4, 6};
 	int err;
 	unsigned int channels = 6;
-	snd_pcm_format_t format = SND_PCM_FORMAT_FLOAT64_LE;
+	snd_pcm_format_t format = SND_PCM_FORMAT_FLOAT_LE;
 
 	float center_image = 0.7;
 	float shift = 0;
@@ -563,7 +581,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(freesurround2020)
 		return -ENOMEM;
 	}
 
-	fs_plugin = freesurround_pcm(freesurround_params(
+	freesurround_pcm* fs_plugin = new freesurround_pcm(freesurround_params(
 		center_image, shift, depth, circular_wrap, focus, front_sep, rear_sep,
 		bass_lo, bass_hi, use_lfe, cs));
 

@@ -1,24 +1,24 @@
-all:
-	[ ! -d .deps ] && mkdir .deps || echo;
-	if libtool --tag=CC --mode=compile gcc -DHAVE_CONFIG_H -I. -I. -I..    -Wall -g -I/usr/include/alsa -g -O2 -MT pcm_freesurround.lo -MD -MP -MF ".deps/pcm_freesurround.Tpo" -c -o pcm_freesurround.lo pcm_freesurround.c; \
-		then mv -f ".deps/pcm_freesurround.Tpo" ".deps/pcm_freesurround.Plo"; else rm -f ".deps/pcm_freesurround.Tpo"; exit 1; fi 
-	mkdir .libs 2>/dev/null ; \
-	gcc -DHAVE_CONFIG_H -I. -I. -I.. -Wall -g -I/usr/include/alsa -g -O2 -MT pcm_freesurround.lo -MD -MP -MF .deps/pcm_freesurround.Tpo -c pcm_freesurround.c  -fPIC -DPIC -o .libs/pcm_freesurround.o
-	libtool --tag=CC --mode=link gcc -Wall -g -I/usr/include/alsa -g -O2 -module -avoid-version -export-dynamic   -o libasound_module_pcm_freesurround.la -rpath /usr/lib/alsa-lib  pcm_freesurround.lo -lasound   -lfftw3 -lfftw3f 
-	gcc -shared  .libs/pcm_freesurround.o -lfftw3 -lfftw3f /usr/lib/libasound.so  -Wl,-soname -Wl,libasound_module_pcm_freesurround.so -o .libs/libasound_module_pcm_freesurround.so
+shell = /bin/sh
+objects = build/.libs/pcm_freesurround2020.o build/.libs/kiss_fft.o build/.libs/kiss_fftr.o build/.libs/channelmaps.o build/.libs/freesurround_decoder.o
+libs = build/pcm_freesurround2020.lo build/kiss_fft.lo build/kiss_fftr.lo build/channelmaps.lo build/freesurround_decoder.lo
+CXX = g++
+CXXFLAGS = -std=c++1z -I. -Wall -I/usr/include/alsa -g3 -MT build/$(*F).lo -MD -MP -MF "build/.deps/$(*F).Tpo" -c
 
-install:
-	cp .libs/libasound_module_pcm_freesurround.so /usr/lib/alsa-lib/
-	cp .libs/libasound_module_pcm_freesurround.a /usr/lib/alsa-lib/
-	cp libasound_module_pcm_freesurround.la /usr/lib/alsa-lib/
-
-uninstall:
-	rm /usr/lib/alsa-lib/libasound_module_pcm_freesurround.so 
-	rm /usr/lib/alsa-lib/libasound_module_pcm_freesurround.a 
-	rm /usr/lib/alsa-lib/libasound_module_pcm_freesurround.la 
-
+all: build/libasound_module_pcm_freesurround2020.so
+build/libasound_module_pcm_freesurround2020.so: build/libasound_module_pcm_freesurround2020.la
+	g++ -shared $(objects) /usr/lib/libasound.so  -Wl,-soname -Wl,build/libasound_module_pcm_freesurround2020.so -o build/libasound_module_pcm_freesurround2020.so
+build/libasound_module_pcm_freesurround2020.la: $(libs)
+	libtool --tag=CXX --mode=link g++ -Wall -I/usr/include/alsa  -g3 -module -avoid-version -export-dynamic -o build/libasound_module_pcm_freesurround2020.la -rpath /usr/lib/alsa-lib $(libs) -lasound
+build/%.lo: %.cpp
+	-@mkdir build
+	-@mkdir build/.deps
+	libtool --tag=CXX --mode=compile $(CXX) $(CXXFLAGS) -o build/$(*F).lo $(*F).cpp
+pcm_freesurround2020.cpp: freesurround_decoder.h stream_chunker.h
+kiss_fft.cpp: kiss_fft.h _kiss_fft_guts.h
+kiss_fftr.cpp: kiss_fftr.h kiss_fft.h _kiss_fft_guts.h
+channelmaps.cpp: channelmaps.h
+freesurround_decoder.cpp: kiss_fftr.h channelmaps.h freesurround_decoder.h
 
 clean:
-	rm -rf .deps/
-	rm -rf .libs/
-	rm -f *.o *.lo *.la
+	-@rm -rf build
+.PHONY: clean install
