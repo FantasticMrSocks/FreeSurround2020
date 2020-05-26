@@ -339,10 +339,8 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	// Copy out_buf to transfer_out
 	fs_mutex.lock();
 	int out_buf_size = data->out_buf->size();
-	for (s=0; s<OUTPUT_CHANNELS*size; s++) {
-		if ((OUTPUT_CHANNELS*size)>s+out_buf_size) {
-			transfer_out[s] = 0.0;
-		} else {
+	if (out_buf_size >= OUTPUT_CHANNELS*size) {
+		for (s=0; s<OUTPUT_CHANNELS*size; s++) {
 			transfer_out[s] = data->out_buf->front();
 			data->out_buf->pop();
 		}
