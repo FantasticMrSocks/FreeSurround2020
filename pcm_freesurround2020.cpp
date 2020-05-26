@@ -42,6 +42,8 @@
 #include <vector>
 #include <queue>
 #include <map>
+#include <thread>
+#include <mutex>
 
 
 //ALSA plugin function definitions
@@ -74,6 +76,8 @@ std::vector<int> alsa_to_fs(int num_channels) {
 	}
 	return mapping;
 }
+std::thread *fs_thread;
+std::mutex fs_mutex;
 
 // holds the user-configurable parameters of the FreeSurround plugin
 struct freesurround_params
@@ -156,6 +160,16 @@ public:
 		return false;
 	}
 
+	std::vector<float> get_out_buf() {
+		int send_size = out_buf.size();
+		std::vector<float> send_out;
+		for (int i=0;i<send_size;i++) {
+			send_out.push_back(out_buf.front());
+			out_buf.pop();
+		}
+		return send_out;
+	}
+
 	unsigned num_channels() {
 		return decoder.num_channels(params.channels_fs);
 	}
@@ -174,15 +188,6 @@ public:
 				out_buf.push(src[channel_map[c]+(s*channels)]);
 			}
 		}
-	}
-
-	float pop_out_buf() {
-		float sample = 0.0;
-		if (!out_buf.empty()) {
-			sample = out_buf.front();
-			out_buf.pop();
-		}
-		return sample;
 	}
 
 private:
@@ -225,7 +230,45 @@ struct fs_data {
 	freesurround_pcm* plugin;
 	snd_pcm_extplug_t ext;
 	snd_pcm_hw_params_t *hw_params;
+	bool finish;
+	std::queue<float> *in_buf;
+	std::queue<float> *out_buf;
 };
+
+//Threaded decoding
+int fs_func(fs_data *data) {
+	bool finish = false;
+	while (!finish) {
+		fs_mutex.lock();
+		//Copy input to decoder
+		int buf_size = data->in_buf->size();
+		if(buf_size > 0) {
+			float chunk_buf[buf_size];
+			for(int i=0; i<buf_size; i++) {
+				chunk_buf[i] = data->in_buf->front();
+				data->in_buf->pop();
+			}
+			data->plugin->get_chunk(chunk_buf, buf_size);
+		}
+		fs_mutex.unlock();
+
+		fs_mutex.lock();
+		//Copy output from decoder
+		std::vector<float> plugin_out = data->plugin->get_out_buf();
+		if(plugin_out.size()>0) {
+			for(int i=0;i<plugin_out.size();i++) {
+				data->out_buf->push(plugin_out[i]);
+			}
+		}
+		fs_mutex.unlock();
+
+		fs_mutex.lock();
+		//See whether we need to end this thread
+		finish = data->finish;
+		fs_mutex.unlock();
+	}
+	return 0;
+}
 
 /*
  * Helper functions
@@ -253,11 +296,13 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	       snd_pcm_uframes_t size)
 {
 	fs_data *data = (fs_data *)ext->private_data;
-
+	fs_mutex.lock();
 	unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
+	fs_mutex.unlock();
 	float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
 	unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
-	float in_buf[INPUT_CHANNELS * size];
+	float transfer_in[INPUT_CHANNELS * size];
+	float transfer_out[OUTPUT_CHANNELS * size];
 
     for (c = 0; c < INPUT_CHANNELS; c++) {
 		src[c] = (float *)area_addr(src_areas + c, src_offset);
@@ -270,18 +315,35 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 
 	for (s=0; s<size; s++) {
 		for (c=0; c<INPUT_CHANNELS; c++){
-			in_buf[(s*INPUT_CHANNELS)+c] = *src[c];
+			transfer_in[(s*INPUT_CHANNELS)+c] = *src[c];
 			src[c] += src_step[c];
 		}
 	}
 
 	// Send n=size*INPUT_CHANNELS samples off to chunker to buffer for decoding
-    data->plugin->get_chunk(in_buf, size);
+	fs_mutex.lock();
+    for (int i=0;i<INPUT_CHANNELS*size;i++){
+		data->in_buf->push(transfer_in[i]);
+	}
+	fs_mutex.unlock();
+
+	// Copy out_buf to transfer_out
+	fs_mutex.lock();
+	int out_buf_size = data->out_buf->size();
+	for (s=0; s<out_buf_size; s++) {
+		if ((OUTPUT_CHANNELS*size)-out_buf_size>s) {
+			transfer_out[s] = 0.0;
+		} else {
+			transfer_out[s] = data->out_buf->front();
+			data->out_buf->pop();
+		}
+	}
+	fs_mutex.unlock();
 
 	// Copy from output buffer into dst
 	for (s=0; s<size; s++) {
 		for (c=0; c<OUTPUT_CHANNELS; c++) {
-			*dst[c] = data->plugin->pop_out_buf();
+			*dst[c] = transfer_out[(OUTPUT_CHANNELS*s)+c];
 			dst[c] += dst_step[c];
 		}
 	}
@@ -295,14 +357,27 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
  *
  * Allocate internal buffers
  */
-static int fs_prepare(snd_pcm_extplug_t *ext) { return 0; }
+static int fs_prepare(snd_pcm_extplug_t *ext) {
+	fs_data *data = (fs_data *)ext->private_data;
+	data->in_buf = new std::queue<float>;
+	data->out_buf = new std::queue<float>;
+	fs_thread = new std::thread(fs_func, data);
+	return 0;
+}
 
 /*
  * close callback
  */
 static int fs_close(snd_pcm_extplug_t *ext) {
+	fs_mutex.lock();
 	fs_data *data = (fs_data *)ext->private_data;
+	data->finish = true;
+	fs_mutex.unlock();
+	fs_thread->join();
+	delete &fs_thread;
 	delete data->plugin;
+	delete data->in_buf;
+	delete data->out_buf;
 	return 0;
 }
 
@@ -612,6 +687,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(freesurround2020)
 	snd_pcm_extplug_set_slave_param(&data->ext, SND_PCM_EXTPLUG_HW_FORMAT,format);
 
 	*pcmp = data->ext.pcm;
+
 	return 0;
 
 }
