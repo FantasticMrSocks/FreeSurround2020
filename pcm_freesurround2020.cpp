@@ -239,10 +239,10 @@ struct fs_data {
 int input_thread(fs_data *data){
 	bool finish = false;
 	while (!finish) {
-		fs_mutex.lock();
+		//fs_mutex.lock();
 		finish = data->finish;
 		std::queue<float> in_buf = *data->in_buf;
-		fs_mutex.unlock();
+		//fs_mutex.unlock();
 		//Copy input to decoder
 		int buf_size = in_buf.size();
 		if(buf_size > 0) {
@@ -251,9 +251,9 @@ int input_thread(fs_data *data){
 				chunk_buf[i] = in_buf.front();
 				in_buf.pop();
 			}
-			fs_mutex.lock();
+			//fs_mutex.lock();
 			data->plugin->get_chunk(chunk_buf, buf_size);
-			fs_mutex.unlock();
+			//fs_mutex.unlock();
 		}
 	}
 	return 0;
@@ -263,16 +263,16 @@ int input_thread(fs_data *data){
 int output_thread(fs_data *data) {
 	bool finish = false;
 	while (!finish) {
-		fs_mutex.lock();
+		//fs_mutex.lock();
 		finish = data->finish;
 		//Copy output from decoder
 		std::vector<float> plugin_out = data->plugin->get_out_buf();
-		fs_mutex.unlock();
+		//fs_mutex.unlock();
 		if(plugin_out.size()>0) {
 			for(int i=0;i<plugin_out.size();i++) {
-				fs_mutex.lock();
+				//fs_mutex.lock();
 				data->out_buf->push(plugin_out[i]);
-				fs_mutex.unlock();
+				//fs_mutex.unlock();
 			}
 		}
 	}
@@ -305,9 +305,9 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	       snd_pcm_uframes_t size)
 {
 	fs_data *data = (fs_data *)ext->private_data;
-	fs_mutex.lock();
+	//fs_mutex.lock();
 	unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
-	fs_mutex.unlock();
+	//fs_mutex.unlock();
 	float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
 	unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
 	float transfer_in[INPUT_CHANNELS * size];
@@ -330,14 +330,14 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	}
 
 	// Send n=size*INPUT_CHANNELS samples off to chunker to buffer for decoding
-	fs_mutex.lock();
+	//fs_mutex.lock();
     for (int i=0;i<INPUT_CHANNELS*size;i++){
 		data->in_buf->push(transfer_in[i]);
 	}
-	fs_mutex.unlock();
+	//fs_mutex.unlock();
 
 	// Copy out_buf to transfer_out
-	fs_mutex.lock();
+	//fs_mutex.lock();
 	int out_buf_size = data->out_buf->size();
 	if (out_buf_size >= OUTPUT_CHANNELS*size) {
 		for (s=0; s<OUTPUT_CHANNELS*size; s++) {
@@ -345,7 +345,7 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 			data->out_buf->pop();
 		}
 	}
-	fs_mutex.unlock();
+	//fs_mutex.unlock();
 
 	// Copy from output buffer into dst
 	for (s=0; s<size; s++) {
@@ -377,10 +377,10 @@ static int fs_prepare(snd_pcm_extplug_t *ext) {
  * close callback
  */
 static int fs_close(snd_pcm_extplug_t *ext) {
-	fs_mutex.lock();
+	//fs_mutex.lock();
 	fs_data *data = (fs_data *)ext->private_data;
 	data->finish = true;
-	fs_mutex.unlock();
+	//fs_mutex.unlock();
 	fs_thread_in->join();
 	fs_thread_out->join();
 	delete &fs_thread_in;
