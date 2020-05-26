@@ -76,7 +76,8 @@ std::vector<int> alsa_to_fs(int num_channels) {
 	}
 	return mapping;
 }
-std::thread *fs_thread;
+std::thread *fs_thread_in;
+std::thread *fs_thread_out;
 std::mutex fs_mutex;
 
 // holds the user-configurable parameters of the FreeSurround plugin
@@ -235,37 +236,45 @@ struct fs_data {
 	std::queue<float> *out_buf;
 };
 
-//Threaded decoding
-int fs_func(fs_data *data) {
+int input_thread(fs_data *data){
 	bool finish = false;
 	while (!finish) {
 		fs_mutex.lock();
+		finish = data->finish;
+		std::queue<float> in_buf = *data->in_buf;
+		fs_mutex.unlock();
 		//Copy input to decoder
-		int buf_size = data->in_buf->size();
+		int buf_size = in_buf.size();
 		if(buf_size > 0) {
 			float chunk_buf[buf_size];
 			for(int i=0; i<buf_size; i++) {
-				chunk_buf[i] = data->in_buf->front();
-				data->in_buf->pop();
+				chunk_buf[i] = in_buf.front();
+				in_buf.pop();
 			}
+			fs_mutex.lock();
 			data->plugin->get_chunk(chunk_buf, buf_size);
+			fs_mutex.unlock();
 		}
-		fs_mutex.unlock();
+	}
+	return 0;
+}
 
+//Threaded decoding
+int output_thread(fs_data *data) {
+	bool finish = false;
+	while (!finish) {
 		fs_mutex.lock();
+		finish = data->finish;
 		//Copy output from decoder
 		std::vector<float> plugin_out = data->plugin->get_out_buf();
+		fs_mutex.unlock();
 		if(plugin_out.size()>0) {
 			for(int i=0;i<plugin_out.size();i++) {
+				fs_mutex.lock();
 				data->out_buf->push(plugin_out[i]);
+				fs_mutex.unlock();
 			}
 		}
-		fs_mutex.unlock();
-
-		fs_mutex.lock();
-		//See whether we need to end this thread
-		finish = data->finish;
-		fs_mutex.unlock();
 	}
 	return 0;
 }
@@ -330,8 +339,8 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	// Copy out_buf to transfer_out
 	fs_mutex.lock();
 	int out_buf_size = data->out_buf->size();
-	for (s=0; s<out_buf_size; s++) {
-		if ((OUTPUT_CHANNELS*size)-out_buf_size>s) {
+	for (s=0; s<OUTPUT_CHANNELS*size; s++) {
+		if ((OUTPUT_CHANNELS*size)>s+out_buf_size) {
 			transfer_out[s] = 0.0;
 		} else {
 			transfer_out[s] = data->out_buf->front();
@@ -361,7 +370,8 @@ static int fs_prepare(snd_pcm_extplug_t *ext) {
 	fs_data *data = (fs_data *)ext->private_data;
 	data->in_buf = new std::queue<float>;
 	data->out_buf = new std::queue<float>;
-	fs_thread = new std::thread(fs_func, data);
+	fs_thread_in = new std::thread(input_thread, data);
+	fs_thread_out = new std::thread(output_thread, data);
 	return 0;
 }
 
@@ -373,8 +383,10 @@ static int fs_close(snd_pcm_extplug_t *ext) {
 	fs_data *data = (fs_data *)ext->private_data;
 	data->finish = true;
 	fs_mutex.unlock();
-	fs_thread->join();
-	delete &fs_thread;
+	fs_thread_in->join();
+	fs_thread_out->join();
+	delete &fs_thread_in;
+	delete &fs_thread_out;
 	delete data->plugin;
 	delete data->in_buf;
 	delete data->out_buf;
