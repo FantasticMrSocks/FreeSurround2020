@@ -28,6 +28,7 @@
 #include <alsa/pcm_external.h>
 #include <alsa/pcm_plugin.h>
 #include "resource1.h"
+#include "circ_buffer.hpp"
 #include "stream_chunker.h"
 #include "freesurround_decoder.h"
 #include <boost/bind.hpp>
@@ -76,9 +77,9 @@ std::vector<int> alsa_to_fs(int num_channels) {
 	}
 	return mapping;
 }
-std::thread *fs_thread_in;
-std::thread *fs_thread_out;
-std::mutex fs_mutex;
+std::thread *fs_thread;
+std::mutex in_mutex;
+std::mutex out_mutex;
 
 // holds the user-configurable parameters of the FreeSurround plugin
 struct freesurround_params
@@ -164,10 +165,8 @@ public:
 	std::vector<float> get_out_buf() {
 		int send_size = out_buf.size();
 		std::vector<float> send_out;
-		for (int i=0;i<send_size;i++) {
-			send_out.push_back(out_buf.front());
-			out_buf.pop();
-		}
+		send_out.insert(send_out.begin(), out_buf.begin(), out_buf.end());
+		out_buf.clear();
 		return send_out;
 	}
 
@@ -186,7 +185,7 @@ public:
 		unsigned channels = num_channels();
 		for (unsigned s=0; s<chunk_size; s++){
 			for (unsigned c=0; c<channels; c++) {
-				out_buf.push(src[channel_map[c]+(s*channels)]);
+				out_buf.push_back(src[channel_map[c]+(s*channels)]);
 			}
 		}
 	}
@@ -196,8 +195,9 @@ private:
 	stream_chunker<float> rechunker;	// gathers/splits the inbound data stream into equally-sized chunks
 	freesurround_decoder decoder;		// the surround decoder
 	unsigned srate;	             		// last known sampling rate
-	std::queue<float> out_buf;			// the buffer where we store outgoing samples
+	std::vector<float> out_buf;			// the buffer where we store outgoing samples
 	std::vector<int> channel_map;
+	std::mutex fs_mutex;
 };
 
 static std::unordered_map<std::string, channel_setup> const table = {
@@ -232,49 +232,24 @@ struct fs_data {
 	snd_pcm_extplug_t ext;
 	snd_pcm_hw_params_t *hw_params;
 	bool finish;
-	std::queue<float> *in_buf;
-	std::queue<float> *out_buf;
+	circ_buffer<float> *in_buf;
+	circ_buffer<float> *out_buf;
 };
 
-int input_thread(fs_data *data){
-	bool finish = false;
-	while (!finish) {
-		//fs_mutex.lock();
-		finish = data->finish;
-		std::queue<float> in_buf = *data->in_buf;
-		//fs_mutex.unlock();
-		//Copy input to decoder
-		int buf_size = in_buf.size();
-		if(buf_size > 0) {
-			float chunk_buf[buf_size];
-			for(int i=0; i<buf_size; i++) {
-				chunk_buf[i] = in_buf.front();
-				in_buf.pop();
-			}
-			//fs_mutex.lock();
-			data->plugin->get_chunk(chunk_buf, buf_size);
-			//fs_mutex.unlock();
-		}
-	}
-	return 0;
-}
-
 //Threaded decoding
-int output_thread(fs_data *data) {
+int decode_thread(fs_data *data) {
 	bool finish = false;
 	while (!finish) {
-		//fs_mutex.lock();
+		//Copy input buffer to chunker
+		std::vector<float> in_buf = data->in_buf->multipop();
+		float chunk[in_buf.size()];
+		std::copy(in_buf.begin(), in_buf.end(), chunk);
+		data->plugin->get_chunk(chunk, in_buf.size());
+
+		//Copy fs output to output buffer
+		data->out_buf->multipush(data->plugin->get_out_buf());
+
 		finish = data->finish;
-		//Copy output from decoder
-		std::vector<float> plugin_out = data->plugin->get_out_buf();
-		//fs_mutex.unlock();
-		if(plugin_out.size()>0) {
-			for(int i=0;i<plugin_out.size();i++) {
-				//fs_mutex.lock();
-				data->out_buf->push(plugin_out[i]);
-				//fs_mutex.unlock();
-			}
-		}
 	}
 	return 0;
 }
@@ -305,13 +280,11 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	       snd_pcm_uframes_t size)
 {
 	fs_data *data = (fs_data *)ext->private_data;
-	//fs_mutex.lock();
 	unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
-	//fs_mutex.unlock();
 	float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
 	unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
-	float transfer_in[INPUT_CHANNELS * size];
-	float transfer_out[OUTPUT_CHANNELS * size];
+	data->in_buf->resize(INPUT_CHANNELS * size, 0.0);
+	data->out_buf->resize(OUTPUT_CHANNELS * size, 0.0);
 
     for (c = 0; c < INPUT_CHANNELS; c++) {
 		src[c] = (float *)area_addr(src_areas + c, src_offset);
@@ -324,33 +297,15 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 
 	for (s=0; s<size; s++) {
 		for (c=0; c<INPUT_CHANNELS; c++){
-			transfer_in[(s*INPUT_CHANNELS)+c] = *src[c];
+			data->in_buf->push(*src[c]);
 			src[c] += src_step[c];
 		}
 	}
 
-	// Send n=size*INPUT_CHANNELS samples off to chunker to buffer for decoding
-	//fs_mutex.lock();
-    for (int i=0;i<INPUT_CHANNELS*size;i++){
-		data->in_buf->push(transfer_in[i]);
-	}
-	//fs_mutex.unlock();
-
-	// Copy out_buf to transfer_out
-	//fs_mutex.lock();
-	int out_buf_size = data->out_buf->size();
-	if (out_buf_size >= OUTPUT_CHANNELS*size) {
-		for (s=0; s<OUTPUT_CHANNELS*size; s++) {
-			transfer_out[s] = data->out_buf->front();
-			data->out_buf->pop();
-		}
-	}
-	//fs_mutex.unlock();
-
 	// Copy from output buffer into dst
 	for (s=0; s<size; s++) {
 		for (c=0; c<OUTPUT_CHANNELS; c++) {
-			*dst[c] = transfer_out[(OUTPUT_CHANNELS*s)+c];
+			*dst[c] = data->out_buf->pop();
 			dst[c] += dst_step[c];
 		}
 	}
@@ -366,10 +321,9 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
  */
 static int fs_prepare(snd_pcm_extplug_t *ext) {
 	fs_data *data = (fs_data *)ext->private_data;
-	data->in_buf = new std::queue<float>;
-	data->out_buf = new std::queue<float>;
-	fs_thread_in = new std::thread(input_thread, data);
-	fs_thread_out = new std::thread(output_thread, data);
+	data->in_buf = new circ_buffer<float>(1, 0);
+	data->out_buf = new circ_buffer<float>(1, 0);
+	fs_thread = new std::thread(decode_thread, data);
 	return 0;
 }
 
@@ -381,10 +335,8 @@ static int fs_close(snd_pcm_extplug_t *ext) {
 	fs_data *data = (fs_data *)ext->private_data;
 	data->finish = true;
 	//fs_mutex.unlock();
-	fs_thread_in->join();
-	fs_thread_out->join();
-	delete &fs_thread_in;
-	delete &fs_thread_out;
+	fs_thread->join();
+	delete &fs_thread;
 	delete data->plugin;
 	delete data->in_buf;
 	delete data->out_buf;

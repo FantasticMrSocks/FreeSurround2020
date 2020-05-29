@@ -13,7 +13,7 @@ build/%.lo: %.cpp
 	-@mkdir build
 	-@mkdir build/.deps
 	libtool --tag=CXX --mode=compile $(CXX) $(CXXFLAGS) -o build/$(*F).lo $(*F).cpp
-pcm_freesurround2020.cpp: freesurround_decoder.h stream_chunker.h
+pcm_freesurround2020.cpp: freesurround_decoder.h stream_chunker.h circ_buffer.hpp
 kiss_fft.cpp: kiss_fft.h _kiss_fft_guts.h
 kiss_fftr.cpp: kiss_fftr.h kiss_fft.h _kiss_fft_guts.h
 channelmaps.cpp: channelmaps.h
