@@ -1,6 +1,6 @@
 #include <boost/circular_buffer.hpp>
 #include <mutex>
-#include <iostream>
+#include <vector>
 
 template <typename T>
 class circ_buffer
