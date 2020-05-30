@@ -40,20 +40,20 @@ public:
         buf_mx.unlock();
         // std::cout << "    Lock released in multipush\n";
     }
-    std::vector<T> multipop() {
+    std::vector<T> multipop(int n=0) {
         std::vector<T> data;
         buf_mx.lock();
         // std::cout << "Lock acquired in multipop\n";
-        data.insert(data.begin(), buf.begin(), buf.end());
-        buf.clear();
+        if (n == 0 || buf.size() == n) {
+            data.insert(data.begin(), buf.begin(), buf.end());
+            buf.clear();
+        } else if (buf.size() > n) {
+            data.insert(data.begin(), buf.begin(), buf.begin()+n);
+            buf.erase_begin(n);
+        }
         buf_mx.unlock();
         // std::cout << "    Lock released in multipop\n";
         return data;
-    }
-    std::vector<T> multipop(int n) {
-        std::vector<T> data;
-        while (buf.size() < n) {}
-        data = multipop();
     }
     int size() {
         int size;
