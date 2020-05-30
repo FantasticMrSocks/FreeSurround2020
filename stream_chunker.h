@@ -46,7 +46,6 @@ public:
 		// if we have elements in the current buffer, fill it up until it is full (then process it)
 		if (buffer.size()) {
 			unsigned u_size = buffer.size();
-			std::cout << "chunk_buffer size: " + std::to_string(u_size) + "; ";
 			unsigned delta = std::min(n,chunk_len-u_size);
 			copy(&data[0],&data[delta],std::back_inserter(buffer));
 			cp += delta;

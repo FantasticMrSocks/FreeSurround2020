@@ -233,7 +233,6 @@ int decode_thread(fs_data *data) {
     bool finish = false;
     while (!finish) {
         //Copy input buffer to chunker
-        std::cout << "in_buf size: " + std::to_string(data->in_buf->size()) + "; ";
         std::vector<float> in_buf = data->in_buf->multipop();
         float chunk[in_buf.size()];
         std::copy(in_buf.begin(), in_buf.end(), chunk);
@@ -241,9 +240,7 @@ int decode_thread(fs_data *data) {
 
         //Copy fs output to output buffer
         std::vector<float> fs_out_buf = data->plugin->get_out_buf();
-        std::cout << "fs_out_buf size: " + std::to_string(fs_out_buf.size()) + "; ";
         data->out_buf->multipush(fs_out_buf);
-        std::cout << "out_buf size: " + std::to_string(data->out_buf->size()) + "\n";
 
         finish = data->finish;
     }
@@ -296,15 +293,18 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
             src[c] += src_step[c];
         }
     }
-    data->in_buf->multipush(in_vec);
+    //data->in_buf->multipush(in_vec);
+    float in_arr[in_vec.size()];
+    std::copy(in_vec.begin(),in_vec.end(),in_arr);
+    data->plugin->get_chunk(in_arr, in_vec.size());
 
     // Copy from output buffer into dst
-    std::vector<float> out_vec = data->out_buf->multipop(size*OUTPUT_CHANNELS);
+    std::vector<float> out_vec = data->plugin->get_out_buf(); //data->out_buf->multipop(size*OUTPUT_CHANNELS);
     int i=0;
     for (s=0; s<size; s++) {
         for (c=0; c<OUTPUT_CHANNELS; c++) {
             //*dst[c] = data->out_buf->pop();
-            if (out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
+            if (i < out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
             dst[c] += dst_step[c];
             i++;
         }
@@ -323,7 +323,7 @@ static int fs_prepare(snd_pcm_extplug_t *ext) {
     fs_data *data = (fs_data *)ext->private_data;
     data->in_buf = new circ_buffer<float>(1000000, 0.0);
     data->out_buf = new circ_buffer<float>(1000000, 0.0);
-    fs_thread = new std::thread(decode_thread, data);
+   // fs_thread = new std::thread(decode_thread, data);
     return 0;
 }
 
@@ -333,8 +333,8 @@ static int fs_prepare(snd_pcm_extplug_t *ext) {
 static int fs_close(snd_pcm_extplug_t *ext) {
     fs_data *data = (fs_data *)ext->private_data;
     data->finish = true;
-    fs_thread->join();
-    delete fs_thread;
+   // fs_thread->join();
+   // delete fs_thread;
     delete data->plugin;
     delete data->in_buf;
     delete data->out_buf;
