@@ -40,27 +40,9 @@
 #include <strstream>
 #include <numeric>
 #include <vector>
-#include <queue>
 #include <map>
 #include <thread>
-
-
-//ALSA plugin function definitions
-#ifdef __cplusplus
-extern "C" {
-#endif
-    // static snd_pcm_extplug_callback_t fs_callback;
-    // static int fs_prepare(snd_pcm_extplug_t *ext);
-    // static int fs_close(snd_pcm_extplug_t *ext);
-    // static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
-    //        const snd_pcm_channel_area_t *dst_areas,
-    //        snd_pcm_uframes_t dst_offset,
-    //        const snd_pcm_channel_area_t *src_areas,
-    //        snd_pcm_uframes_t src_offset,
-    //        snd_pcm_uframes_t size);
-#ifdef __cplusplus
-}
-#endif
+#include <chrono>
 
 const unsigned int INPUT_CHANNELS = 2;
 const int fs_to_alsa_table[8] = {0, 4, 1, 6, 7, 2, 3, 5};
@@ -76,6 +58,7 @@ std::vector<int> alsa_to_fs(int num_channels) {
     return mapping;
 }
 std::thread *fs_thread;
+std::chrono::high_resolution_clock::time_point start;
 
 // holds the user-configurable parameters of the FreeSurround plugin
 struct freesurround_params
@@ -297,10 +280,11 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 
     // Copy from output buffer into dst
     std::vector<float> out_vec = data->out_buf->multipop(size*OUTPUT_CHANNELS);
+    std::cout << std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count()) + "ms: input buffer length is " + std::to_string(in_vec.size()/2) + "; output buffer length is " + std::to_string(out_vec.size()/6) + "; transfer size is " + std::to_string(size) + "\n";
     int i=0;
     for (s=0; s<size; s++) {
         for (c=0; c<OUTPUT_CHANNELS; c++) {
-            //*dst[c] = data->out_buf->pop();
+            // *dst[c] = data->out_buf->pop();
             if (out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
             dst[c] += dst_step[c];
             i++;
@@ -321,6 +305,7 @@ static int fs_prepare(snd_pcm_extplug_t *ext) {
     data->in_buf = new circ_buffer<float>(1000000, 0.0);
     data->out_buf = new circ_buffer<float>(1000000, 0.0);
     fs_thread = new std::thread(decode_thread, data);
+    start = std::chrono::high_resolution_clock::now();
     return 0;
 }
 
