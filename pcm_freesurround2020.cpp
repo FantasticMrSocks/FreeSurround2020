@@ -247,11 +247,7 @@ int decode_thread(fs_data *data) {
 		data->plugin->get_chunk(chunk, in_buf.size());
 
 		//Copy fs output to output buffer
-		//data->out_buf->multipush(data->plugin->get_out_buf());
-		std::vector<float> fs_out = data->plugin->get_out_buf();
-		for (int i = 0; i < fs_out.size(); i++) {
-			data->out_buf->push(fs_out[i]);
-		}
+		data->out_buf->multipush(data->plugin->get_out_buf());
 
 		finish = data->finish;
 	}
@@ -307,10 +303,14 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	}
 
 	// Copy from output buffer into dst
+	std::vector<float> out_vec = data->out_buf->multipop();
+	int i=0;
 	for (s=0; s<size; s++) {
 		for (c=0; c<OUTPUT_CHANNELS; c++) {
-			*dst[c] = data->out_buf->pop();
+			//*dst[c] = data->out_buf->pop();
+			*dst[c] = out_vec[i];
 			dst[c] += dst_step[c];
+			i++;
 		}
 	}
 
