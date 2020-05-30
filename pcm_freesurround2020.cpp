@@ -283,8 +283,8 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
 	float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
 	unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
-	data->in_buf->resize(INPUT_CHANNELS * size, 0.0);
-	data->out_buf->resize(OUTPUT_CHANNELS * size, 0.0);
+	data->in_buf->set_capacity(INPUT_CHANNELS * size);
+	data->out_buf->set_capacity(OUTPUT_CHANNELS * size);
 
     for (c = 0; c < INPUT_CHANNELS; c++) {
 		src[c] = (float *)area_addr(src_areas + c, src_offset);

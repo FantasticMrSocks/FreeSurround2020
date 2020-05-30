@@ -68,6 +68,11 @@ public:
         buf_mx.unlock();
         //std::cout << "    Lock released in resize (no val)\n";
     }
+    void set_capacity(int capacity) {
+        buf_mx.lock();
+        buf.set_capacity(capacity);
+        buf_mx.unlock();
+    }
     void set_default(T val) {
         default_value = val;
     }
