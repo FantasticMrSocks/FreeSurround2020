@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STREAM_CHUNKER_H
 #include <boost/function.hpp> // -> www.boost.org
 #include <vector>
+#include <iostream>
 
 // accumulates/splits data blocks of arbitrary length into chunks of 
 // specified length and passes them on to the given handler
@@ -45,6 +46,7 @@ public:
 		// if we have elements in the current buffer, fill it up until it is full (then process it)
 		if (buffer.size()) {
 			unsigned u_size = buffer.size();
+			std::cout << "chunk_buffer size: " + std::to_string(u_size) + "; ";
 			unsigned delta = std::min(n,chunk_len-u_size);
 			copy(&data[0],&data[delta],std::back_inserter(buffer));
 			cp += delta;

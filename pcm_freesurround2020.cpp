@@ -27,7 +27,6 @@
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <alsa/pcm_plugin.h>
-#include "resource1.h"
 #include "circ_buffer.hpp"
 #include "stream_chunker.h"
 #include "freesurround_decoder.h"
@@ -128,13 +127,13 @@ struct freesurround_params
 
 // the FreeSurround pcm class
 class freesurround_pcm {
-    enum { chunk_size = 4096 };
+    enum { chunk_size = 2048 };
 public:
     // construct the plugin instance from a preset
     freesurround_pcm(freesurround_params fs_params = freesurround_params()):
         params(fs_params),
         rechunker(boost::bind(&freesurround_pcm::process_chunk,this,_1),chunk_size*2),
-        decoder(params.channels_fs,4096), srate(44100)
+        decoder(params.channels_fs,2048), srate(48000)
     {
         // set up decoder parameters according to preset params
         decoder.circular_wrap(params.circular_wrap);
@@ -152,8 +151,6 @@ public:
     }
 
     // receive a chunk from ALSA and buffer it
-    //TODO: Change foobar audio_chunk to alsa data format
-    //TODO: Maybe write new class for audio chunk?
     bool get_chunk(float *input, snd_pcm_uframes_t size) {
         rechunker.append(input, size);
         return false;
@@ -171,7 +168,6 @@ public:
         return decoder.num_channels(params.channels_fs);
     }
     // process and emit a chunk (called by the rechunker when it's time)
-    //TODO: Replace foobar chunk with ALSA data
     void process_chunk(float *stereo) {
         // set sampling rate dependent parameters
         decoder.low_cutoff(params.bass_lo/(srate/2.0));
@@ -237,13 +233,17 @@ int decode_thread(fs_data *data) {
     bool finish = false;
     while (!finish) {
         //Copy input buffer to chunker
+        std::cout << "in_buf size: " + std::to_string(data->in_buf->size()) + "; ";
         std::vector<float> in_buf = data->in_buf->multipop();
         float chunk[in_buf.size()];
         std::copy(in_buf.begin(), in_buf.end(), chunk);
         data->plugin->get_chunk(chunk, in_buf.size());
 
         //Copy fs output to output buffer
-        data->out_buf->multipush(data->plugin->get_out_buf());
+        std::vector<float> fs_out_buf = data->plugin->get_out_buf();
+        std::cout << "fs_out_buf size: " + std::to_string(fs_out_buf.size()) + "; ";
+        data->out_buf->multipush(fs_out_buf);
+        std::cout << "out_buf size: " + std::to_string(data->out_buf->size()) + "\n";
 
         finish = data->finish;
     }
