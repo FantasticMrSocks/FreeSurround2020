@@ -283,8 +283,6 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
     unsigned OUTPUT_CHANNELS = data->plugin->num_channels();
     float *src[INPUT_CHANNELS], *dst[OUTPUT_CHANNELS];
     unsigned int src_step[INPUT_CHANNELS], dst_step[OUTPUT_CHANNELS], c, s;
-    data->in_buf->set_capacity(INPUT_CHANNELS * size);
-    data->out_buf->set_capacity(OUTPUT_CHANNELS * size);
 
     for (c = 0; c < INPUT_CHANNELS; c++) {
         src[c] = (float *)area_addr(src_areas + c, src_offset);
@@ -305,16 +303,10 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
     data->in_buf->multipush(in_vec);
 
     // Copy from output buffer into dst
-    std::vector<float> out_vec = data->out_buf->multipop(size*OUTPUT_CHANNELS);
-    if (out_vec.size()) {
-        int i=0;
-        for (s=0; s<size; s++) {
-            for (c=0; c<OUTPUT_CHANNELS; c++) {
-                //*dst[c] = data->out_buf->pop();
-                *dst[c] = out_vec[i];
-                dst[c] += dst_step[c];
-                i++;
-            }
+    for (s=0; s<size; s++) {
+        for (c=0; c<OUTPUT_CHANNELS; c++) {
+            *dst[c] = data->out_buf->pop();
+            dst[c] += dst_step[c];
         }
     }
 
@@ -329,8 +321,8 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
  */
 static int fs_prepare(snd_pcm_extplug_t *ext) {
     fs_data *data = (fs_data *)ext->private_data;
-    data->in_buf = new circ_buffer<float>(1, 0);
-    data->out_buf = new circ_buffer<float>(1, 0);
+    data->in_buf = new circ_buffer<float>(1000000, 0.0);
+    data->out_buf = new circ_buffer<float>(1000000, 0.0);
     fs_thread = new std::thread(decode_thread, data);
     return 0;
 }
