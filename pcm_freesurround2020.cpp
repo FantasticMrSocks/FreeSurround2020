@@ -308,7 +308,7 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 	for (s=0; s<size; s++) {
 		for (c=0; c<OUTPUT_CHANNELS; c++) {
 			//*dst[c] = data->out_buf->pop();
-			*dst[c] = out_vec[i];
+			if (i < out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
 			dst[c] += dst_step[c];
 			i++;
 		}
