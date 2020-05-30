@@ -295,12 +295,14 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 		dst_step[c] = area_step(dst_areas + c);
 	}
 
+	std::vector<float> in_vec;
 	for (s=0; s<size; s++) {
 		for (c=0; c<INPUT_CHANNELS; c++){
-			data->in_buf->push(*src[c]);
+			in_vec.push_back(*src[c]);
 			src[c] += src_step[c];
 		}
 	}
+	data->in_buf->multipush(in_vec);
 
 	// Copy from output buffer into dst
 	std::vector<float> out_vec = data->out_buf->multipop();
