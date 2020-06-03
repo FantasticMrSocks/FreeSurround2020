@@ -46,14 +46,14 @@
 
 const unsigned int INPUT_CHANNELS = 2;
 const int fs_to_alsa_table[8] = {0, 4, 1, 6, 7, 2, 3, 5};
-const int alsa_to_fs_table[8] = {0, 2, 5, 6, 1, 7, 3, 4};
-std::vector<int> alsa_to_fs(int num_channels) {
-    std::vector<int> mapping;
+std::vector<int> fs_to_alsa(int num_channels) {
+    std::vector<int> table;
     for (int i = 0; i < 8; i++) {
-        int fs_channel = std::distance(alsa_to_fs_table, std::find(alsa_to_fs_table, alsa_to_fs_table+num_channels, i));
-        if (fs_channel < num_channels) {
-            mapping.push_back(fs_channel);
-        }
+        if (fs_to_alsa_table[i] < num_channels) table.push_back(fs_to_alsa_table[i]);
+    }
+    std::vector<int> mapping;
+    for (int i = 0; i < num_channels; i++) {
+        mapping.push_back(std::distance(table.begin(), std::find(table.begin(), table.end(), i)));
     }
     return mapping;
 }
@@ -130,7 +130,7 @@ public:
         decoder.low_cutoff(params.bass_lo/(srate/2.0));
         decoder.high_cutoff(params.bass_hi/(srate/2.0));
         rechunker.flush();
-        channel_map = alsa_to_fs(num_channels());
+        channel_map = fs_to_alsa(num_channels());
     }
 
     // receive a chunk from ALSA and buffer it
@@ -280,11 +280,10 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
 
     // Copy from output buffer into dst
     std::vector<float> out_vec = data->out_buf->multipop(size*OUTPUT_CHANNELS);
-    std::cout << std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count()) + "ms: input buffer length is " + std::to_string(in_vec.size()/2) + "; output buffer length is " + std::to_string(out_vec.size()/6) + "; transfer size is " + std::to_string(size) + "\n";
+    // std::cout << std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now()-start).count()) + "ms: input buffer length is " + std::to_string(in_vec.size()/2) + "; output buffer length is " + std::to_string(out_vec.size()/6) + "; transfer size is " + std::to_string(size) + "\n";
     int i=0;
     for (s=0; s<size; s++) {
         for (c=0; c<OUTPUT_CHANNELS; c++) {
-            // *dst[c] = data->out_buf->pop();
             if (out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
             dst[c] += dst_step[c];
             i++;
