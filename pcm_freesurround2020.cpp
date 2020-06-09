@@ -57,6 +57,29 @@ std::vector<int> fs_to_alsa(int num_channels) {
     }
     return mapping;
 }
+
+unsigned long get_mult(snd_pcm_format_t format) {
+    long mult = 1;
+    if (format == SND_PCM_FORMAT_S16_LE) {
+        mult = 32767;
+    } else if (format == SND_PCM_FORMAT_S32_LE) {
+        mult = 2147483647;
+    }
+    return mult;
+}
+
+signed long to_s(float val, snd_pcm_format_t format) {
+    long result = val * get_mult(format);
+    return result;
+}
+
+float to_f(signed long val, snd_pcm_format_t format) {
+    float result = val / get_mult(format);
+    if (result < -1.0) result = -1.0;
+    if (result > 1.0) result = 1.0;
+    return result;
+}
+
 std::thread *fs_thread;
 std::chrono::high_resolution_clock::time_point start;
 
@@ -272,7 +295,7 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
     std::vector<float> in_vec;
     for (s=0; s<size; s++) {
         for (c=0; c<INPUT_CHANNELS; c++){
-            in_vec.push_back(*src[c]);
+            in_vec.push_back(to_f(*src[c],ext->format));
             src[c] += src_step[c];
         }
     }
@@ -284,7 +307,7 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
     int i=0;
     for (s=0; s<size; s++) {
         for (c=0; c<OUTPUT_CHANNELS; c++) {
-            if (out_vec.size()) {*dst[c] = out_vec[i];} else {*dst[c] = 0.0;}
+            if (out_vec.size()) {*dst[c] = to_s(out_vec[i], ext->format);} else {*dst[c] = 0;}
             dst[c] += dst_step[c];
             i++;
         }
@@ -543,8 +566,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(freesurround2020)
             continue;
         }
          if (strcmp(id, "use_lfe") == 0) {
-            double val;
-            if (snd_config_get_real(n, &val) < 0) {
+            long val;
+            if (snd_config_get_integer(n, &val) < 0) {
                 SNDERR("Invalid type for %s", id);
                 return -EINVAL;
             }
@@ -575,6 +598,26 @@ SND_PCM_PLUGIN_DEFINE_FUNC(freesurround2020)
             if (channels < 1 || channels > 7) {
                 SNDERR("channels must be between 1 and 7");
             }
+        }
+
+        if (strcmp(id, "format") == 0) {
+            const char *val;
+            if (snd_config_get_string(n, &val) < 0) {
+                SNDERR("Invalid type for %s", id);
+                return -EINVAL;
+            }
+            format = snd_pcm_format_value(val);
+            if (format == SND_PCM_FORMAT_UNKNOWN) {
+				SNDERR("unknown format %s", val);
+				return -EINVAL;
+			}
+			if (format != SND_PCM_FORMAT_S16_LE &&
+			    format != SND_PCM_FORMAT_S32_LE &&
+                format != SND_PCM_FORMAT_FLOAT_LE) {
+				SNDERR("Only S16/S32/FLOAT_LE formats are allowed");
+				return -EINVAL;
+			}
+			continue;
         }
 
         SNDERR("Unknown field %s", id);
