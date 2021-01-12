@@ -4,11 +4,11 @@
 #include <iostream>
 
 template <typename T>
-class circ_buffer
+class threaded_circ_buffer
 {
 public:
-    circ_buffer() {};
-    circ_buffer(int n, T val) {
+    threaded_circ_buffer() {};
+    threaded_circ_buffer(int n, T val) {
         buf.set_capacity(n);
         set_default(val);
     }

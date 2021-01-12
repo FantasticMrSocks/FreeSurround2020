@@ -27,7 +27,7 @@
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <alsa/pcm_plugin.h>
-#include "circ_buffer.hpp"
+#include "threaded_circ_buffer.hpp"
 #include "FreeSurround/stream_chunker.h"
 #include "FreeSurround/freesurround_decoder.h"
 #include "AudioFile/AudioFile.h"
@@ -231,8 +231,8 @@ struct fs_data {
     snd_pcm_extplug_t ext;
     snd_pcm_hw_params_t *hw_params;
     bool finish;
-    circ_buffer<float> *in_buf;
-    circ_buffer<float> *out_buf;
+    threaded_circ_buffer<float> *in_buf;
+    threaded_circ_buffer<float> *out_buf;
 };
 
 //Threaded decoding
@@ -325,8 +325,8 @@ static snd_pcm_sframes_t fs_transfer(snd_pcm_extplug_t *ext,
  */
 static int fs_prepare(snd_pcm_extplug_t *ext) {
     fs_data *data = (fs_data *)ext->private_data;
-    data->in_buf = new circ_buffer<float>(1000000, 0.0);
-    data->out_buf = new circ_buffer<float>(1000000, 0.0);
+    data->in_buf = new threaded_circ_buffer<float>(1000000, 0.0);
+    data->out_buf = new threaded_circ_buffer<float>(1000000, 0.0);
     fs_thread = new std::thread(decode_thread, data);
     start = std::chrono::high_resolution_clock::now();
     return 0;
