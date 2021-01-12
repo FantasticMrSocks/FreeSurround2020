@@ -37,3 +37,6 @@
 
 #VSCode stuff
 .vscode
+
+#Profiling
+.coderrect

@@ -28,8 +28,9 @@
 #include <alsa/pcm_external.h>
 #include <alsa/pcm_plugin.h>
 #include "circ_buffer.hpp"
-#include "stream_chunker.h"
-#include "freesurround_decoder.h"
+#include "FreeSurround/stream_chunker.h"
+#include "FreeSurround/freesurround_decoder.h"
+#include "AudioFile/AudioFile.h"
 #include <boost/bind.hpp>
 #include <boost/assign.hpp>
 #include <boost/archive/binary_iarchive.hpp>

@@ -13,11 +13,11 @@ build/%.lo: %.cpp
 	-@mkdir build
 	-@mkdir build/.deps
 	libtool --tag=CXX --mode=compile $(CXX) $(CXXFLAGS) -o build/$(*F).lo $(*F).cpp
-pcm_freesurround2020.cpp: freesurround_decoder.h stream_chunker.h circ_buffer.hpp
-kiss_fft.cpp: kiss_fft.h _kiss_fft_guts.h
-kiss_fftr.cpp: kiss_fftr.h kiss_fft.h _kiss_fft_guts.h
-channelmaps.cpp: channelmaps.h
-freesurround_decoder.cpp: kiss_fftr.h channelmaps.h freesurround_decoder.h
+pcm_freesurround2020.cpp: FreeSurround/freesurround_decoder.h FreeSurround/stream_chunker.h circ_buffer.hpp
+FreeSurround/kiss_fft.cpp: FreeSurround/kiss_fft.h FreeSurround/_kiss_fft_guts.h
+FreeSurround/kiss_fftr.cpp: FreeSurround/kiss_fftr.h FreeSurround/kiss_fft.h FreeSurround/_kiss_fft_guts.h
+FreeSurround/channelmaps.cpp: FreeSurround/channelmaps.h
+FreeSurround/freesurround_decoder.cpp: FreeSurround/kiss_fftr.h FreeSurround/channelmaps.h FreeSurround/freesurround_decoder.h
 
 clean:
 	-@rm -rf build
