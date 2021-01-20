@@ -38,5 +38,6 @@
 #VSCode stuff
 .vscode
 
-#Profiling
+#Misc
 .coderrect
+doxygen.cfg
