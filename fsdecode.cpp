@@ -25,6 +25,7 @@
 #include "FreeSurround/stream_chunker.h"
 #include "FreeSurround/freesurround_decoder.h"
 #include "AudioFile/AudioFile.h"
+#include "ArgumentParser/argparse.hpp"
 #include <boost/bind.hpp>
 #include <boost/assign.hpp>
 #include <boost/archive/binary_iarchive.hpp>
@@ -222,29 +223,32 @@ void output_thread(threaded_circ_buffer<float> *out_buf, bool *finish) {
     return;
 }
 
-int main(int argc, char* argv[]) {
-    /*    
-    TODO: Parse arguments from command line
-        * -h/--help for usage printout
-        * -c/--channels for number of output channels
-        * -r/--samplerate for output sample rate
-        * -f/--format for sample format (int/float)
-        * -b/--bits for sample bit depth
-        * -B/--buffer for buffer length in samples
-        * -i/--input for input filename
-        * -o/--output for output filename
-        * --center_image
-        * --shift
-        * --front_sep
-        * --rear_sep
-        * --depth
-        * --circular_wrap
-        * --bass_lo
-        * --bass_hi
-        * --focus
-        * --use_lfe
-        * --channel_setup
+int main(int argc, const char** argv) {
+    argparse::ArgumentParser parser;
+    
+    parser.addArgument("-h","--help");
+    parser.addArgument("-c","--channels", 1);
+    parser.addArgument("-r","--samplerate", 1);
+    parser.addArgument("-f","--format", 1);
+    parser.addArgument("-b","--bits", 1);
+    parser.addArgument("-B","--buffer_length", 1);
+    parser.addArgument("-i","--input", 1);
+    parser.addArgument("-o","--output", 1);
+    parser.addArgument("--center_image", 1);
+    parser.addArgument("--shift", 1);
+    parser.addArgument("--front_sep", 1);
+    parser.addArgument("--rear_sep", 1);
+    parser.addArgument("--depth", 1);
+    parser.addArgument("--circular_wrap", 1);
+    parser.addArgument("--bass_lo", 1);
+    parser.addArgument("--bass_hi", 1);
+    parser.addArgument("--focus", 1);
+    parser.addArgument("--use_lfe", 1);
+    parser.addArgument("--channel_setup", 1);
 
+    parser.parse(argc, argv);
+
+    /*
     TODO: Read input from stdin/infile
 
     TODO: Use AudioFile lib to parse wav data
