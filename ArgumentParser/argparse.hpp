@@ -808,7 +808,7 @@ public:
                           std::string aVersion = "1.0")
       : mProgramName(std::move(aProgramName)), mVersion(std::move(aVersion)) {
     add_argument("-h", "--help").help("shows help message and exits").nargs(0);
-    add_argument("-v", "--version")
+    add_argument("--version")
         .help("prints version information and exits")
         .nargs(0);
   }

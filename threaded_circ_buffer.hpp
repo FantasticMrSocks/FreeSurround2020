@@ -56,9 +56,10 @@ public:
         return data;
     }
     int size() {
-        int size;
-        size = buf.size();
         return buf.size();
+    }
+    int capacity() {
+        return buf.capacity();
     }
     void resize(int capacity, T val) {
         buf_mx.lock();
